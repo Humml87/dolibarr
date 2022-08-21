@@ -60,6 +60,7 @@ $salert = GETPOST('salert', 'alpha');
 $includeproductswithoutdesiredqty = GETPOST('includeproductswithoutdesiredqty', 'alpha');
 $mode = GETPOST('mode', 'alpha');
 $draftorder = GETPOST('draftorder', 'alpha');
+$draftmrp = GETPOST('draftmrp', 'alpha');
 
 
 $fourn_id = GETPOST('fourn_id', 'int');
@@ -147,6 +148,9 @@ if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x'
 }
 if ($draftorder == 'on') {
 	$draftchecked = "checked";
+}
+if ($draftmrp == 'on') {
+	$mrpchecked = "checked";
 }
 
 // Create orders
@@ -752,6 +756,14 @@ if (!empty($conf->global->STOCK_REPLENISH_ADD_CHECKBOX_INCLUDE_DRAFT_ORDER)) {
 	print $langs->trans('IncludeAlsoDraftOrders').'&nbsp;<input type="checkbox" id="draftorder" name="draftorder" '.(!empty($draftchecked) ? $draftchecked : '').'>';
 }
 print '</td>';
+if (!empty($conf->mrp->enabled)) {
+	print '<td class="liste_titre right">';
+	if (!empty($conf->global->STOCK_REPLENISH_ADD_CHECKBOX_INCLUDE_DRAFT_MRP)) {
+		print $langs->trans('IncludeAlsoDraftMrp').'&nbsp;<input type="checkbox" id="draftmrp" name="draftmrp" '.(!empty($mrpchecked) ? $mrpchecked : '').'>';
+	}
+	print '</td>';
+}
+
 print '<td class="liste_titre">&nbsp;</td>';
 // Fields from hook
 $parameters = array('param'=>$param, 'sortfield'=>$sortfield, 'sortorder'=>$sortorder);
@@ -779,6 +791,9 @@ if (!empty($conf->global->STOCK_ALLOW_ADD_LIMIT_STOCK_BY_WAREHOUSE) && $fk_entre
 	print_liste_field_titre($stocklabelbis, $_SERVER["PHP_SELF"], 'stock_real_warehouse', $param, '', '', $sortfield, $sortorder, 'right ');
 }
 print_liste_field_titre('Ordered', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
+if (!empty($conf->mrp->enabled)) {
+	print_liste_field_titre('InProduction', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
+}
 print_liste_field_titre('StockToBuy', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
 print_liste_field_titre('SupplierRef', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
 
@@ -800,6 +815,11 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 		}
 
 		$prod->load_stock('warehouseopen, warehouseinternal'.(!$usevirtualstock?', novirtual':''), $draftchecked);
+
+		if (!empty($conf->mrp->enabled)) {
+			$prod->load_stats_mo(); //TODO include $draftchecked
+			$inProduction = $prod->stats_mo['qty_toproduce'] - $prod->stats_mo['qty_produced'];
+		}
 
 		// Multilangs
 		if (!empty($conf->global->MAIN_MULTILANGS)) {
@@ -874,7 +894,8 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 			$stocktobuywarehouse = max(max($desiredstockwarehouse, $alertstockwarehouse) - $stockwarehouse, 0); //ordered is already in $stock in virtual mode
 		}
 
-		$picto = '';
+		//Comment for suppliers orders
+		$pictoOrders = '';
 		if ($ordered > 0) {
 			$stockforcompare = ($usevirtualstock ? $stock : $stock + $ordered);
 			/*if ($stockforcompare >= $desiredstock)
@@ -884,7 +905,16 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 				$picto = img_picto('', 'help');
 			}*/
 		} else {
-			$picto = img_picto($langs->trans("NoPendingReceptionOnSupplierOrder"), 'help');
+			$pictoOrders = img_picto($langs->trans("NoPendingReceptionOnSupplierOrder"), 'help');
+		}
+
+		//Comment for Mrp
+		$pictoMrp = '';
+		if ($inProduction > 0) {
+			//TODO find out...
+			// $stockforcompare = ($usevirtualstock ? $stock : $stock + $ordered);
+		} else {
+			$pictoMrp = img_picto($langs->trans("NoPendingReceptionOnMrp"), 'help');
 		}
 
 		print '<tr class="oddeven">';
@@ -930,7 +960,12 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 		}
 
 		// Already ordered
-		print '<td class="right"><a href="replenishorders.php?search_product='.$prod->id.'">'.$ordered.'</a> '.$picto.'</td>';
+		print '<td class="right"><a href="replenishorders.php?search_product='.$prod->id.'">'.$ordered.'</a> '.$pictoOrders.'</td>';
+
+		// Already in production
+		if (!empty($conf->mrp->enabled)) {
+			print '<td class="right"><a href="replenishmrp.php?search_product=' . $prod->id . '">' . $inProduction . '</a> ' . $pictoMrp . '</td>';
+		}
 
 		// To order
 		print '<td class="right"><input type="text" size="4" name="tobuy'.$i.'" value="'.((!empty($conf->global->STOCK_ALLOW_ADD_LIMIT_STOCK_BY_WAREHOUSE) && $fk_entrepot > 0) > 0 ? $stocktobuywarehouse : $stocktobuy).'"></td>';
