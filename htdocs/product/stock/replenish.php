@@ -60,7 +60,7 @@ $salert = GETPOST('salert', 'alpha');
 $includeproductswithoutdesiredqty = GETPOST('includeproductswithoutdesiredqty', 'alpha');
 $mode = GETPOST('mode', 'alpha');
 $draftorder = GETPOST('draftorder', 'alpha');
-$draftmrp = GETPOST('draftmrp', 'alpha');
+$draftMo = GETPOST('draftmo', 'alpha');
 
 
 $fourn_id = GETPOST('fourn_id', 'int');
@@ -572,6 +572,12 @@ $head[1][0] = DOL_URL_ROOT.'/product/stock/replenishorders.php';
 $head[1][1] = $langs->trans("ReplenishmentOrders");
 $head[1][2] = 'replenishorders';
 
+if (!empty($conf->mrp->enabled)) {
+	$head[2][0] = DOL_URL_ROOT.'/product/stock/replenisMo.php';
+	$head[2][1] = $langs->trans("ReplenishmentMo");
+	$head[2][2] = 'replenishorders';
+}
+
 
 print load_fiche_titre($langs->trans('Replenishment'), '', 'stock');
 
@@ -758,8 +764,8 @@ if (!empty($conf->global->STOCK_REPLENISH_ADD_CHECKBOX_INCLUDE_DRAFT_ORDER)) {
 print '</td>';
 if (!empty($conf->mrp->enabled)) {
 	print '<td class="liste_titre right">';
-	if (!empty($conf->global->STOCK_REPLENISH_ADD_CHECKBOX_INCLUDE_DRAFT_MRP)) {
-		print $langs->trans('IncludeAlsoDraftMrp').'&nbsp;<input type="checkbox" id="draftmrp" name="draftmrp" '.(!empty($mrpchecked) ? $mrpchecked : '').'>';
+	if (!empty($conf->global->STOCK_REPLENISH_ADD_CHECKBOX_INCLUDE_DRAFT_MO)) {
+		print $langs->trans('IncludeAlsoDraftMo').'&nbsp;<input type="checkbox" id="draftMo" name="draftMo" '.(!empty($mochecked) ? $mochecked : '').'>';
 	}
 	print '</td>';
 }
@@ -817,8 +823,8 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 		$prod->load_stock('warehouseopen, warehouseinternal'.(!$usevirtualstock?', novirtual':''), $draftchecked);
 
 		if (!empty($conf->mrp->enabled)) {
-			$prod->load_stats_mo(); //TODO include $draftchecked
-			$inProduction = $prod->stats_mo['qty_toproduce'] - $prod->stats_mo['qty_produced'];
+			$prod->load_stats_mo();
+			$inProduction = $prod->stats_mrptoproduce['qty'];
 		}
 
 		// Multilangs
@@ -908,13 +914,13 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 			$pictoOrders = img_picto($langs->trans("NoPendingReceptionOnSupplierOrder"), 'help');
 		}
 
-		//Comment for Mrp
-		$pictoMrp = '';
+		//Comment for MO
+		$pictoMo = '';
 		if ($inProduction > 0) {
 			//TODO find out...
 			// $stockforcompare = ($usevirtualstock ? $stock : $stock + $ordered);
 		} else {
-			$pictoMrp = img_picto($langs->trans("NoPendingReceptionOnMrp"), 'help');
+			$pictoMo = img_picto($langs->trans("NoPendingReceptionOnMo"), 'help');
 		}
 
 		print '<tr class="oddeven">';
@@ -964,7 +970,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 
 		// Already in production
 		if (!empty($conf->mrp->enabled)) {
-			print '<td class="right"><a href="replenishmrp.php?search_product=' . $prod->id . '">' . $inProduction . '</a> ' . $pictoMrp . '</td>';
+			print '<td class="right"><a href="replenishmo.php?search_product=' . $prod->id . '">' . $inProduction . '</a> ' . $pictoMo . '</td>';
 		}
 
 		// To order
