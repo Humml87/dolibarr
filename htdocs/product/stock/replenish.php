@@ -622,6 +622,21 @@ if (!empty($conf->global->STOCK_ALLOW_ADD_LIMIT_STOCK_BY_WAREHOUSE)) {
 	print $langs->trans('Warehouse').' '.$formproduct->selectWarehouses($fk_entrepot, 'fk_entrepot', '', 1);
 	print '</div>';
 }
+
+// Add filter for 'finished' and 'finished with default BOM'
+if(!empty($conf->mrp->enabled))
+{
+	print '<div class="inline-block valignmiddle" style="padding-right: 20px;">';
+	print '<tr><td class="fieldrequired">'.$langs->trans("NatureOfProductShort").'</td><td colspan="3">';
+	print '<select class="flat" name="statut_buy">';
+	print '<option value="0" selected></option>';
+	print '<option value="1">'.$langs->trans("NatureOfProductFinishedWithDefaultBOM").'</option>';
+	print '<option value="2">'.$langs->trans("NatureOfProductFinished").'</option>';
+	print '</select>';
+	print '</td></tr>';
+	print '</div>';
+}
+
 print '<div class="inline-block valignmiddle" style="padding-right: 20px;">';
 print $langs->trans('Supplier').' '.$form->select_company($fk_supplier, 'fk_supplier', 'fournisseur=1', 1);
 print '</div>';
