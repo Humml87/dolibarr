@@ -3611,15 +3611,18 @@ class Form
 
 		$langs->load('stocks');
 
-		$sql = "SELECT p.rowid, p.ref, p.label, p.price, p.duration, pfp.fk_soc,";
+		$sql = "SELECT p.rowid, p.ref, p.label, p.price, p.duration, pfp.fk_soc, p.finished,";
 		$sql .= " pfp.ref_fourn, pfp.rowid as idprodfournprice, pfp.price as fprice, pfp.remise_percent, pfp.quantity, pfp.unitprice,";
-		$sql .= " pfp.fk_supplier_price_expression, pfp.fk_product, pfp.tva_tx, s.nom as name";
+		$sql .= " pfp.fk_supplier_price_expression, pfp.fk_product, pfp.tva_tx, s.nom as name,";
+		$sql .= " bom.rowid as idbom";
 		$sql .= " FROM ".$this->db->prefix()."product as p";
 		$sql .= " LEFT JOIN ".$this->db->prefix()."product_fournisseur_price as pfp ON p.rowid = pfp.fk_product";
 		$sql .= " LEFT JOIN ".$this->db->prefix()."societe as s ON pfp.fk_soc = s.rowid";
-		$sql .= " WHERE pfp.entity IN (".getEntity('productsupplierprice').")";
-		$sql .= " AND p.tobuy = 1";
-		$sql .= " AND s.fournisseur = 1";
+		$sql .= " LEFT JOIN ".$this->db->prefix()."bom_bom as bom ON bom.rowid = p.fk_default_bom";
+		//$sql .= " WHERE pfp.entity IN (".getEntity('productsupplierprice').")";
+		//$sql .= " AND p.tobuy = 1";
+		$sql .= " WHERE p.tobuy = 1";
+		//$sql .= " AND s.fournisseur = 1";
 		$sql .= " AND p.rowid = ".((int) $productid);
 		$sql .= " ORDER BY s.nom, pfp.ref_fourn DESC";
 
@@ -3631,62 +3634,80 @@ class Form
 
 			$form = '<select class="flat" id="select_'.$htmlname.'" name="'.$htmlname.'">';
 
-			if (!$num) {
-				$form .= '<option value="0">-- '.$langs->trans("NoSupplierPriceDefinedForThisProduct").' --</option>';
-			} else {
-				require_once DOL_DOCUMENT_ROOT.'/product/dynamic_price/class/price_parser.class.php';
-				$form .= '<option value="0">&nbsp;</option>';
+			require_once DOL_DOCUMENT_ROOT.'/product/dynamic_price/class/price_parser.class.php';
 
-				$i = 0;
-				while ($i < $num) {
-					$objp = $this->db->fetch_object($result);
+			$i = 0;
+			$optCount = 0;
+			while ($i < $num) {
+				$objp = $this->db->fetch_object($result);
 
-					$opt = '<option value="'.$objp->idprodfournprice.'"';
-					//if there is only one supplier, preselect it
-					if ($num == 1 || ($selected_supplier > 0 && $objp->fk_soc == $selected_supplier)) {
-						$opt .= ' selected';
+				if (!$objp->idprodfournprice && !$objp->finished) { //If no Price defined and not are a "finished" product.
+					$form .= '<option value="0">-- '.$langs->trans("NoSupplierPriceDefinedForThisProduct").' --</option>';
+				}
+				else {
+
+					if ($i == 0) {
+						$form .= '<option value="0">&nbsp;</option>';
 					}
-					$opt .= '>'.$objp->name.' - '.$objp->ref_fourn.' - ';
 
-					if (!empty($conf->dynamicprices->enabled) && !empty($objp->fk_supplier_price_expression)) {
-						$prod_supplier = new ProductFournisseur($this->db);
-						$prod_supplier->product_fourn_price_id = $objp->idprodfournprice;
-						$prod_supplier->id = $productid;
-						$prod_supplier->fourn_qty = $objp->quantity;
-						$prod_supplier->fourn_tva_tx = $objp->tva_tx;
-						$prod_supplier->fk_supplier_price_expression = $objp->fk_supplier_price_expression;
-						$priceparser = new PriceParser($this->db);
-						$price_result = $priceparser->parseProductSupplier($prod_supplier);
-						if ($price_result >= 0) {
-							$objp->fprice = $price_result;
-							if ($objp->quantity >= 1) {
-								$objp->unitprice = $objp->fprice / $objp->quantity;
-							}
+					if ($objp->finished) {
+						if($objp->idbom) {
+							$form .= '<option value="MoBom" selected>'.$langs->trans("ProvideWithProductionBom").'</option>';
+						}
+						else {
+							$form .= '<option value="Mo" selected>'.$langs->trans("ProvideWithProduction").'</option>';
 						}
 					}
-					if ($objp->quantity == 1) {
-						$opt .= price($objp->fprice * (!empty($conf->global->DISPLAY_DISCOUNTED_SUPPLIER_PRICE) ? (1 - $objp->remise_percent / 100) : 1), 1, $langs, 0, 0, -1, $conf->currency)."/";
-					}
+					if ($objp->idprodfournprice) {
+						$opt = '<option value="' . $objp->idprodfournprice . '"';
+						//if there is only one supplier, preselect it
+						if (!$objp->idbom && $num == 1 || ($selected_supplier > 0 && $objp->fk_soc == $selected_supplier)) {
+							$opt .= ' selected';
+						}
+						$opt .= '>' . $objp->name . ' - ' . $objp->ref_fourn . ' - ';
 
-					$opt .= $objp->quantity.' ';
+						if (!empty($conf->dynamicprices->enabled) && !empty($objp->fk_supplier_price_expression)) {
+							$prod_supplier = new ProductFournisseur($this->db);
+							$prod_supplier->product_fourn_price_id = $objp->idprodfournprice;
+							$prod_supplier->id = $productid;
+							$prod_supplier->fourn_qty = $objp->quantity;
+							$prod_supplier->fourn_tva_tx = $objp->tva_tx;
+							$prod_supplier->fk_supplier_price_expression = $objp->fk_supplier_price_expression;
+							$priceparser = new PriceParser($this->db);
+							$price_result = $priceparser->parseProductSupplier($prod_supplier);
+							if ($price_result >= 0) {
+								$objp->fprice = $price_result;
+								if ($objp->quantity >= 1) {
+									$objp->unitprice = $objp->fprice / $objp->quantity;
+								}
+							}
+						}
+						if ($objp->quantity == 1) {
+							$opt .= price($objp->fprice * (!empty($conf->global->DISPLAY_DISCOUNTED_SUPPLIER_PRICE) ? (1 - $objp->remise_percent / 100) : 1), 1, $langs, 0, 0, -1, $conf->currency) . "/";
+						}
 
-					if ($objp->quantity == 1) {
-						$opt .= $langs->trans("Unit");
-					} else {
-						$opt .= $langs->trans("Units");
-					}
-					if ($objp->quantity > 1) {
-						$opt .= " - ";
-						$opt .= price($objp->unitprice * (!empty($conf->global->DISPLAY_DISCOUNTED_SUPPLIER_PRICE) ? (1 - $objp->remise_percent / 100) : 1), 1, $langs, 0, 0, -1, $conf->currency)."/".$langs->trans("Unit");
-					}
-					if ($objp->duration) {
-						$opt .= " - ".$objp->duration;
-					}
-					$opt .= "</option>\n";
+						$opt .= $objp->quantity . ' ';
 
-					$form .= $opt;
-					$i++;
+						if ($objp->quantity == 1) {
+							$opt .= $langs->trans("Unit");
+						} else {
+							$opt .= $langs->trans("Units");
+						}
+						if ($objp->quantity > 1) {
+							$opt .= " - ";
+							$opt .= price($objp->unitprice * (!empty($conf->global->DISPLAY_DISCOUNTED_SUPPLIER_PRICE) ? (1 - $objp->remise_percent / 100) : 1), 1, $langs, 0, 0, -1, $conf->currency) . "/" . $langs->trans("Unit");
+						}
+						if ($objp->duration) {
+							$opt .= " - " . $objp->duration;
+						}
+						$opt .= "</option>\n";
+
+						$form .= $opt;
+					}
 				}
+
+				$i++;
+
 			}
 
 			$form .= '</select>';

@@ -628,11 +628,8 @@ if(!empty($conf->mrp->enabled))
 {
 	print '<div class="inline-block valignmiddle" style="padding-right: 20px;">';
 	print '<tr><td class="fieldrequired">'.$langs->trans("NatureOfProductShort").'</td><td colspan="3">';
-	print '<select class="flat" name="statut_buy">';
-	print '<option value="0" selected></option>';
-	print '<option value="1">'.$langs->trans("NatureOfProductFinishedWithDefaultBOM").'</option>';
-	print '<option value="2">'.$langs->trans("NatureOfProductFinished").'</option>';
-	print '</select>';
+	$finishedarray = array('0' => "", '1' => $langs->trans("NatureOfProductFinished"), '2' => $langs->trans("NatureOfProductFinishedWithDefaultBOM"));
+	print $form->selectarray('filterFinished', $finishedarray, GETPOST('filterFinished'));
 	print '</td></tr>';
 	print '</div>';
 }
