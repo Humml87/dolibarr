@@ -166,55 +166,63 @@ if ($action == 'order' && GETPOST('valid')) {
 		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.product.class.php';
 		$productsupplier = new ProductFournisseur($db);
 		for ($i = 0; $i < $linecount; $i++) {
-			if (GETPOST('choose'.$i, 'alpha') === 'on' && GETPOST('fourn'.$i, 'int') > 0) {
-				//one line
-				$box = $i;
-				$supplierpriceid = GETPOST('fourn'.$i, 'int');
-				//get all the parameters needed to create a line
-				$qty = GETPOST('tobuy'.$i, 'int');
-				$idprod = $productsupplier->get_buyprice($supplierpriceid, $qty);
-				$res = $productsupplier->fetch($idprod);
-				if ($res && $idprod > 0) {
-					if ($qty) {
-						//might need some value checks
-						$line = new CommandeFournisseurLigne($db);
-						$line->qty = $qty;
-						$line->fk_product = $idprod;
+			$obtaining = dolExplodeIntoArray(GETPOST('fourn'.$i, 'alpha'));
+			if (GETPOST('choose'.$i, 'alpha') === 'on' && $obtaining['Id'] > 0) {
+				if ($obtaining['SourcingChannel'] === 'pfp')
+				{
+					//one line
+					$box = $i;
+					$supplierpriceid = $obtaining['Id'];
+					//get all the parameters needed to create a line
+					$qty = GETPOST('tobuy'.$i, 'int');
+					$idprod = $productsupplier->get_buyprice($supplierpriceid, $qty);
+					$res = $productsupplier->fetch($idprod);
+					if ($res && $idprod > 0) {
+						if ($qty) {
+							//might need some value checks
+							$line = new CommandeFournisseurLigne($db);
+							$line->qty = $qty;
+							$line->fk_product = $idprod;
 
-						//$product = new Product($db);
-						//$product->fetch($obj->fk_product);
-						if (!empty($conf->global->MAIN_MULTILANGS)) {
-							$productsupplier->getMultiLangs();
-						}
+							//$product = new Product($db);
+							//$product->fetch($obj->fk_product);
+							if (!empty($conf->global->MAIN_MULTILANGS)) {
+								$productsupplier->getMultiLangs();
+							}
 
-						// if we use supplier description of the products
-						if (!empty($productsupplier->desc_supplier) && !empty($conf->global->PRODUIT_FOURN_TEXTS)) {
-							$desc = $productsupplier->desc_supplier;
-						} else {
-							$desc = $productsupplier->description;
-						}
-						$line->desc = $desc;
-						if (!empty($conf->global->MAIN_MULTILANGS)) {
-							// TODO Get desc in language of thirdparty
-						}
+							// if we use supplier description of the products
+							if (!empty($productsupplier->desc_supplier) && !empty($conf->global->PRODUIT_FOURN_TEXTS)) {
+								$desc = $productsupplier->desc_supplier;
+							} else {
+								$desc = $productsupplier->description;
+							}
+							$line->desc = $desc;
+							if (!empty($conf->global->MAIN_MULTILANGS)) {
+								// TODO Get desc in language of thirdparty
+							}
 
-						$line->tva_tx = $productsupplier->vatrate_supplier;
-						$line->subprice = $productsupplier->fourn_pu;
-						$line->total_ht = $productsupplier->fourn_pu * $qty;
-						$tva = $line->tva_tx / 100;
-						$line->total_tva = $line->total_ht * $tva;
-						$line->total_ttc = $line->total_ht + $line->total_tva;
-						$line->remise_percent = $productsupplier->remise_percent;
-						$line->ref_fourn = $productsupplier->ref_supplier;
-						$line->type = $productsupplier->type;
-						$line->fk_unit = $productsupplier->fk_unit;
-						$suppliers[$productsupplier->fourn_socid]['lines'][] = $line;
+							$line->tva_tx = $productsupplier->vatrate_supplier;
+							$line->subprice = $productsupplier->fourn_pu;
+							$line->total_ht = $productsupplier->fourn_pu * $qty;
+							$tva = $line->tva_tx / 100;
+							$line->total_tva = $line->total_ht * $tva;
+							$line->total_ttc = $line->total_ht + $line->total_tva;
+							$line->remise_percent = $productsupplier->remise_percent;
+							$line->ref_fourn = $productsupplier->ref_supplier;
+							$line->type = $productsupplier->type;
+							$line->fk_unit = $productsupplier->fk_unit;
+							$suppliers[$productsupplier->fourn_socid]['lines'][] = $line;
+						}
+					} elseif ($idprod == -1) {
+						$errorQty++;
+					} else {
+						$error = $db->lasterror();
+						dol_print_error($db);
 					}
-				} elseif ($idprod == -1) {
-					$errorQty++;
-				} else {
-					$error = $db->lasterror();
-					dol_print_error($db);
+				} elseif ($obtaining['SourcingChannel'] === 'mo') {
+					//TODO: implement to create a MO
+				} elseif ($obtaining['SourcingChannel'] === 'moWithBom') {
+					//TODO: implement to create a MO with BOM
 				}
 
 				unset($_POST['fourn'.$i]);
@@ -222,7 +230,7 @@ if ($action == 'order' && GETPOST('valid')) {
 			unset($_POST[$i]);
 		}
 
-		//we now know how many orders we need and what lines they have
+		//we now know how many orders or mo we need and what lines they have
 		$i = 0;
 		$fail = 0;
 		$orders = array();
@@ -988,7 +996,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 		// To order
 		print '<td class="right"><input type="text" size="4" name="tobuy'.$i.'" value="'.((!empty($conf->global->STOCK_ALLOW_ADD_LIMIT_STOCK_BY_WAREHOUSE) && $fk_entrepot > 0) > 0 ? $stocktobuywarehouse : $stocktobuy).'"></td>';
 
-		// Supplier
+		// Selection to consume the Product (via Supplier, Mo or MoWithBom)
 		print '<td class="right">';
 		print $form->select_product_fourn_price($prod->id, 'fourn'.$i, $fk_supplier);
 		print '</td>';

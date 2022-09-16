@@ -3652,14 +3652,14 @@ class Form
 
 					if ($objp->finished) {
 						if($objp->idbom) {
-							$form .= '<option value="MoBom" selected>'.$langs->trans("ProvideWithProductionBom").'</option>';
+							$form .= '<option value="SourcingChannel=moWithBom;Id=' . (int)$objp->idbom . '" selected>'.$langs->trans("ProvideWithProductionBom").'</option>';
 						}
 						else {
-							$form .= '<option value="Mo" selected>'.$langs->trans("ProvideWithProduction").'</option>';
+							$form .= '<option value="SourcingChannel=mo;Id=' . (int)$objp->rowid . '" selected>'.$langs->trans("ProvideWithProduction").'</option>';
 						}
 					}
 					if ($objp->idprodfournprice) {
-						$opt = '<option value="' . $objp->idprodfournprice . '"';
+						$opt = '<option value="SourcingChannel=pfp;Id=' . (int)$objp->idprodfournprice . '"';
 						//if there is only one supplier, preselect it
 						if (!$objp->idbom && $num == 1 || ($selected_supplier > 0 && $objp->fk_soc == $selected_supplier)) {
 							$opt .= ' selected';
