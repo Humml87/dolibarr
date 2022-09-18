@@ -145,6 +145,7 @@ if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x'
 	$salert = '';
 	$includeproductswithoutdesiredqty = '';
 	$draftorder = '';
+	$draftmrp = '';
 }
 if ($draftorder == 'on') {
 	$draftchecked = "checked";
@@ -153,7 +154,7 @@ if ($draftmrp == 'on') {
 	$mrpchecked = "checked";
 }
 
-// Create orders
+// Create orders or/and mo´s
 if ($action == 'order' && GETPOST('valid')) {
 	$linecount = GETPOST('linecount', 'int');
 	$box = 0;
@@ -162,19 +163,24 @@ if ($action == 'order' && GETPOST('valid')) {
 	if ($linecount > 0) {
 		$db->begin();
 
-		$suppliers = array();
+		$procurements = array();
 		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.product.class.php';
-		$productsupplier = new ProductFournisseur($db);
+		require_once DOL_DOCUMENT_ROOT.'/mrp/class/mo.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/bom/class/bom.class.php';
 		for ($i = 0; $i < $linecount; $i++) {
 			$obtaining = dolExplodeIntoArray(GETPOST('fourn'.$i, 'alpha'));
 			if (GETPOST('choose'.$i, 'alpha') === 'on' && $obtaining['Id'] > 0) {
+				$box = $i;
+
+				//get common parameters needed to create a mo or orderline
+				$qty = GETPOST('tobuy'.$i, 'int');
+
 				if ($obtaining['SourcingChannel'] === 'pfp')
 				{
-					//one line
-					$box = $i;
+					$productsupplier = new ProductFournisseur($db);
+					//prepare to create a order line
 					$supplierpriceid = $obtaining['Id'];
 					//get all the parameters needed to create a line
-					$qty = GETPOST('tobuy'.$i, 'int');
 					$idprod = $productsupplier->get_buyprice($supplierpriceid, $qty);
 					$res = $productsupplier->fetch($idprod);
 					if ($res && $idprod > 0) {
@@ -211,7 +217,7 @@ if ($action == 'order' && GETPOST('valid')) {
 							$line->ref_fourn = $productsupplier->ref_supplier;
 							$line->type = $productsupplier->type;
 							$line->fk_unit = $productsupplier->fk_unit;
-							$suppliers[$productsupplier->fourn_socid]['lines'][] = $line;
+							$procurements[$obtaining['SourcingChannel']][$productsupplier->fourn_socid]['lines'][] = $line;
 						}
 					} elseif ($idprod == -1) {
 						$errorQty++;
@@ -219,10 +225,25 @@ if ($action == 'order' && GETPOST('valid')) {
 						$error = $db->lasterror();
 						dol_print_error($db);
 					}
-				} elseif ($obtaining['SourcingChannel'] === 'mo') {
-					//TODO: implement to create a MO
-				} elseif ($obtaining['SourcingChannel'] === 'moWithBom') {
-					//TODO: implement to create a MO with BOM
+				}
+				if ($obtaining['SourcingChannel'] === 'mo' || $obtaining['SourcingChannel'] === 'moWithBom'){
+					//Prepare to create a MO
+					$productId = $obtaining['Id'];
+
+					$tmpProduct = new Product($db);
+					$tmpProduct->fetch($productId);
+
+					$mo = new Mo($db);
+					$mo->fk_product = $productId;
+					$mo->qty = $qty;
+					$mo->mrptype = 0; //Manufacturing
+					$mo->fk_warehouse = $tmpProduct->fk_default_warehouse;
+
+					if ($obtaining['SourcingChannel'] === 'moWithBom') {
+						$mo->fk_bom = $tmpProduct->fk_default_bom;
+					}
+
+					$procurements[$obtaining['SourcingChannel']][] = $mo;
 				}
 
 				unset($_POST['fourn'.$i]);
@@ -231,84 +252,116 @@ if ($action == 'order' && GETPOST('valid')) {
 		}
 
 		//we now know how many orders or mo we need and what lines they have
-		$i = 0;
 		$fail = 0;
-		$orders = array();
-		$suppliersid = array_keys($suppliers);
-		foreach ($suppliers as $supplier) {
-			$order = new CommandeFournisseur($db);
+		//$orders = array(); //TODO: need?
 
-			// Check if an order for the supplier exists
-			$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."commande_fournisseur";
-			$sql .= " WHERE fk_soc = ".((int) $suppliersid[$i]);
-			$sql .= " AND source = ".((int) $order::SOURCE_ID_REPLENISHMENT)." AND fk_statut = ".((int) $order::STATUS_DRAFT);
-			$sql .= " AND entity IN (".getEntity('commande_fournisseur').")";
-			$sql .= " ORDER BY date_creation DESC";
-			$resql = $db->query($sql);
-			if ($resql && $db->num_rows($resql) > 0) {
-				$obj = $db->fetch_object($resql);
+		//Create Orders from $procurements with 'PFP'
+		if ($procurements['pfp']){
+			$suppliersid = array_keys($procurements['pfp']);
+			$i = 0;
+			foreach ($procurements['pfp'] as $procurement) {
+				$order = new CommandeFournisseur($db);
 
-				$order->fetch($obj->rowid);
-				$order->fetch_thirdparty();
+				// Check if an order for the supplier exists
+				$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."commande_fournisseur";
+				$sql .= " WHERE fk_soc = ".((int) $suppliersid[$i]);
+				$sql .= " AND source = ".((int) $order::SOURCE_ID_REPLENISHMENT)." AND fk_statut = ".((int) $order::STATUS_DRAFT);
+				$sql .= " AND entity IN (".getEntity('commande_fournisseur').")";
+				$sql .= " ORDER BY date_creation DESC";
+				$resql = $db->query($sql);
+				if ($resql && $db->num_rows($resql) > 0) {
+					$obj = $db->fetch_object($resql);
 
-				foreach ($supplier['lines'] as $line) {
-					if (empty($line->remise_percent)) {
-						$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+					$order->fetch($obj->rowid);
+					$order->fetch_thirdparty();
+
+					foreach ($procurement['lines'] as $line) {
+						if (empty($line->remise_percent)) {
+							$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+						}
+						$result = $order->addline(
+							$line->desc,
+							$line->subprice,
+							$line->qty,
+							$line->tva_tx,
+							$line->localtax1_tx,
+							$line->localtax2_tx,
+							$line->fk_product,
+							0,
+							$line->ref_fourn,
+							$line->remise_percent,
+							'HT',
+							0,
+							$line->type,
+							0,
+							false,
+							null,
+							null,
+							0,
+							$line->fk_unit
+						);
 					}
-					$result = $order->addline(
-						$line->desc,
-						$line->subprice,
-						$line->qty,
-						$line->tva_tx,
-						$line->localtax1_tx,
-						$line->localtax2_tx,
-						$line->fk_product,
-						0,
-						$line->ref_fourn,
-						$line->remise_percent,
-						'HT',
-						0,
-						$line->type,
-						0,
-						false,
-						null,
-						null,
-						0,
-						$line->fk_unit
-					);
-				}
-				if ($result < 0) {
-					$fail++;
-					$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
-					$msg .= $order->error;
-					setEventMessages($msg, null, 'errors');
+					if ($result < 0) {
+						$fail++;
+						$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
+						$msg .= $order->error;
+						setEventMessages($msg, null, 'errors');
+					} else {
+						$id = $result;
+					}
 				} else {
-					$id = $result;
-				}
-			} else {
-				$order->socid = $suppliersid[$i];
-				$order->fetch_thirdparty();
+					$order->socid = $suppliersid[$i];
+					$order->fetch_thirdparty();
 
-				// Trick to know which orders have been generated using the replenishment feature
-				$order->source = $order::SOURCE_ID_REPLENISHMENT;
+					// Trick to know which orders have been generated using the replenishment feature
+					$order->source = $order::SOURCE_ID_REPLENISHMENT;
 
-				foreach ($supplier['lines'] as $line) {
-					if (empty($line->remise_percent)) {
-						$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+					foreach ($procurement['lines'] as $line) {
+						if (empty($line->remise_percent)) {
+							$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+						}
+						$order->lines[] = $line;
 					}
-					$order->lines[] = $line;
-				}
-				$order->cond_reglement_id = $order->thirdparty->cond_reglement_supplier_id;
-				$order->mode_reglement_id = $order->thirdparty->mode_reglement_supplier_id;
+					$order->cond_reglement_id = $order->thirdparty->cond_reglement_supplier_id;
+					$order->mode_reglement_id = $order->thirdparty->mode_reglement_supplier_id;
 
-				$id = $order->create($user);
+					$id = $order->create($user);
+					if ($id < 0) {
+						$fail++;
+						$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
+						$msg .= $order->error;
+						setEventMessages($msg, null, 'errors');
+					}
+					$i++;
+				}
+			}
+		}
+
+		//Create MO from $procurements with 'mo'
+		if ($procurements['mo']) {
+			foreach ($procurements['mo'] as $procurement) {
+				$mo = Mo::castObjectToMo($procurement);
+				$id = $mo->create($user);
 				if ($id < 0) {
 					$fail++;
-					$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
-					$msg .= $order->error;
+					$msg = $langs->trans('MoFail')."&nbsp;:&nbsp;";
+					$msg .= $mo->error;
 					setEventMessages($msg, null, 'errors');
 				}
-				$i++;
+			}
+		}
+
+		//Create MO from $procurements with 'moWithBom'
+		if ($procurements['moWithBom']) {
+			foreach ($procurements['moWithBom'] as $procurement) {
+				$mo = Mo::castObjectToMo($procurement);
+				$id = $mo->create($user);
+				if ($id < 0) {
+					$fail++;
+					$msg = $langs->trans('MoWithBomFail')."&nbsp;:&nbsp;";
+					$msg .= $mo->error;
+					setEventMessages($msg, null, 'errors');
+				}
 			}
 		}
 

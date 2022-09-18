@@ -3652,7 +3652,7 @@ class Form
 
 					if ($objp->finished) {
 						if($objp->idbom) {
-							$form .= '<option value="SourcingChannel=moWithBom;Id=' . (int)$objp->idbom . '" selected>'.$langs->trans("ProvideWithProductionBom").'</option>';
+							$form .= '<option value="SourcingChannel=moWithBom;Id=' . (int)$objp->rowid . '" selected>'.$langs->trans("ProvideWithProductionBom").'</option>';
 						}
 						else {
 							$form .= '<option value="SourcingChannel=mo;Id=' . (int)$objp->rowid . '" selected>'.$langs->trans("ProvideWithProduction").'</option>';

@@ -1482,6 +1482,16 @@ class Mo extends CommonObject
 
 
 	/**
+	 * Function to cast unknown object to a Mo Class.
+	 *
+	 * @param 	Object 	$classToCast	Object to cast
+	 * @return 	Mo
+	 */
+	public static function castObjectToMo($classToCast): Mo {
+		return $classToCast;
+	}
+
+	/**
 	 * Function used to return childs of Mo
 	 *
 	 * @return array if OK, -1 if KO
@@ -1554,6 +1564,8 @@ class Mo extends CommonObject
 			return $MoParent;
 		}
 	}
+
+
 }
 
 /**
