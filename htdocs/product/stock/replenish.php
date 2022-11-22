@@ -61,6 +61,7 @@ $salert = GETPOST('salert', 'alpha');
 $includeproductswithoutdesiredqty = GETPOST('includeproductswithoutdesiredqty', 'alpha');
 $mode = GETPOST('mode', 'alpha');
 $draftorder = GETPOST('draftorder', 'alpha');
+$draftMo = GETPOST('draftmo', 'alpha');
 
 
 $fourn_id = GETPOST('fourn_id', 'int');
@@ -145,12 +146,16 @@ if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x'
 	$salert = '';
 	$includeproductswithoutdesiredqty = '';
 	$draftorder = '';
+	$draftmrp = '';
 }
 if ($draftorder == 'on') {
 	$draftchecked = "checked";
 }
+if ($draftmrp == 'on') {
+	$mrpchecked = "checked";
+}
 
-// Create orders
+// Create orders or/and mo´s
 if ($action == 'order' && GETPOST('valid')) {
 	$linecount = GETPOST('linecount', 'int');
 	$box = 0;
@@ -159,59 +164,88 @@ if ($action == 'order' && GETPOST('valid')) {
 	if ($linecount > 0) {
 		$db->begin();
 
-		$suppliers = array();
+		$procurements = array();
 		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.product.class.php';
-		$productsupplier = new ProductFournisseur($db);
+		require_once DOL_DOCUMENT_ROOT.'/mrp/class/mo.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/bom/class/bom.class.php';
 		for ($i = 0; $i < $linecount; $i++) {
-			if (GETPOST('choose'.$i, 'alpha') === 'on' && GETPOST('fourn'.$i, 'int') > 0) {
-				//one line
+			$obtaining = dolExplodeIntoArray(GETPOST('fourn'.$i, 'alpha'));
+			if (GETPOST('choose'.$i, 'alpha') === 'on' && $obtaining['Id'] > 0) {
 				$box = $i;
-				$supplierpriceid = GETPOST('fourn'.$i, 'int');
-				//get all the parameters needed to create a line
+
+				//get common parameters needed to create a mo or orderline
 				$qty = GETPOST('tobuy'.$i, 'int');
-				$idprod = $productsupplier->get_buyprice($supplierpriceid, $qty);
-				$res = $productsupplier->fetch($idprod);
-				if ($res && $idprod > 0) {
-					if ($qty) {
-						//might need some value checks
-						$line = new CommandeFournisseurLigne($db);
-						$line->qty = $qty;
-						$line->fk_product = $idprod;
 
-						//$product = new Product($db);
-						//$product->fetch($obj->fk_product);
-						if (getDolGlobalInt('MAIN_MULTILANGS')) {
-							$productsupplier->getMultiLangs();
-						}
+				if ($obtaining['SourcingChannel'] === 'pfp')
+				{
+					$productsupplier = new ProductFournisseur($db);
+					//prepare to create a order line
+					$supplierpriceid = $obtaining['Id'];
+					//get all the parameters needed to create a line
+					$idprod = $productsupplier->get_buyprice($supplierpriceid, $qty);
+          $res = $productsupplier->fetch($idprod);
+          if ($res && $idprod > 0) {
+            if ($qty) {
+              //might need some value checks
+              $line = new CommandeFournisseurLigne($db);
+              $line->qty = $qty;
+              $line->fk_product = $idprod;
 
-						// if we use supplier description of the products
-						if (!empty($productsupplier->desc_supplier) && !empty($conf->global->PRODUIT_FOURN_TEXTS)) {
-							$desc = $productsupplier->desc_supplier;
-						} else {
-							$desc = $productsupplier->description;
-						}
-						$line->desc = $desc;
-						if (getDolGlobalInt('MAIN_MULTILANGS')) {
-							// TODO Get desc in language of thirdparty
-						}
+              //$product = new Product($db);
+              //$product->fetch($obj->fk_product);
+              if (getDolGlobalInt('MAIN_MULTILANGS')) {
+                $productsupplier->getMultiLangs();
+              }
 
-						$line->tva_tx = $productsupplier->vatrate_supplier;
-						$line->subprice = $productsupplier->fourn_pu;
-						$line->total_ht = $productsupplier->fourn_pu * $qty;
-						$tva = $line->tva_tx / 100;
-						$line->total_tva = $line->total_ht * $tva;
-						$line->total_ttc = $line->total_ht + $line->total_tva;
-						$line->remise_percent = $productsupplier->remise_percent;
-						$line->ref_fourn = $productsupplier->ref_supplier;
-						$line->type = $productsupplier->type;
-						$line->fk_unit = $productsupplier->fk_unit;
-						$suppliers[$productsupplier->fourn_socid]['lines'][] = $line;
+              // if we use supplier description of the products
+              if (!empty($productsupplier->desc_supplier) && !empty($conf->global->PRODUIT_FOURN_TEXTS)) {
+                $desc = $productsupplier->desc_supplier;
+              } else {
+                $desc = $productsupplier->description;
+              }
+              $line->desc = $desc;
+              if (getDolGlobalInt('MAIN_MULTILANGS')) {
+                // TODO Get desc in language of thirdparty
+							}
+
+							$line->tva_tx = $productsupplier->vatrate_supplier;
+							$line->subprice = $productsupplier->fourn_pu;
+							$line->total_ht = $productsupplier->fourn_pu * $qty;
+							$tva = $line->tva_tx / 100;
+							$line->total_tva = $line->total_ht * $tva;
+							$line->total_ttc = $line->total_ht + $line->total_tva;
+							$line->remise_percent = $productsupplier->remise_percent;
+							$line->ref_fourn = $productsupplier->ref_supplier;
+							$line->type = $productsupplier->type;
+							$line->fk_unit = $productsupplier->fk_unit;
+							$procurements[$obtaining['SourcingChannel']][$productsupplier->fourn_socid]['lines'][] = $line;
+
+						}
+					} elseif ($idprod == -1) {
+						$errorQty++;
+					} else {
+						$error = $db->lasterror();
+						dol_print_error($db);
 					}
-				} elseif ($idprod == -1) {
-					$errorQty++;
-				} else {
-					$error = $db->lasterror();
-					dol_print_error($db);
+				}
+				if ($obtaining['SourcingChannel'] === 'mo' || $obtaining['SourcingChannel'] === 'moWithBom'){
+					//Prepare to create a MO
+					$productId = $obtaining['Id'];
+
+					$tmpProduct = new Product($db);
+					$tmpProduct->fetch($productId);
+
+					$mo = new Mo($db);
+					$mo->fk_product = $productId;
+					$mo->qty = $qty;
+					$mo->mrptype = 0; //Manufacturing
+					$mo->fk_warehouse = $tmpProduct->fk_default_warehouse;
+
+					if ($obtaining['SourcingChannel'] === 'moWithBom') {
+						$mo->fk_bom = $tmpProduct->fk_default_bom;
+					}
+
+					$procurements[$obtaining['SourcingChannel']][] = $mo;
 				}
 
 				unset($_POST['fourn'.$i]);
@@ -219,85 +253,117 @@ if ($action == 'order' && GETPOST('valid')) {
 			unset($_POST[$i]);
 		}
 
-		//we now know how many orders we need and what lines they have
-		$i = 0;
+		//we now know how many orders or mo we need and what lines they have
 		$fail = 0;
-		$orders = array();
-		$suppliersid = array_keys($suppliers);
-		foreach ($suppliers as $supplier) {
-			$order = new CommandeFournisseur($db);
+		//$orders = array(); //TODO: need?
 
-			// Check if an order for the supplier exists
-			$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."commande_fournisseur";
-			$sql .= " WHERE fk_soc = ".((int) $suppliersid[$i]);
-			$sql .= " AND source = ".((int) $order::SOURCE_ID_REPLENISHMENT)." AND fk_statut = ".((int) $order::STATUS_DRAFT);
-			$sql .= " AND entity IN (".getEntity('commande_fournisseur').")";
-			$sql .= " ORDER BY date_creation DESC";
-			$resql = $db->query($sql);
-			if ($resql && $db->num_rows($resql) > 0) {
-				$obj = $db->fetch_object($resql);
+		//Create Orders from $procurements with 'PFP'
+		if ($procurements['pfp']){
+			$suppliersid = array_keys($procurements['pfp']);
+			$i = 0;
+			foreach ($procurements['pfp'] as $procurement) {
+				$order = new CommandeFournisseur($db);
 
-				$order->fetch($obj->rowid);
-				$order->fetch_thirdparty();
+				// Check if an order for the supplier exists
+				$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."commande_fournisseur";
+				$sql .= " WHERE fk_soc = ".((int) $suppliersid[$i]);
+				$sql .= " AND source = ".((int) $order::SOURCE_ID_REPLENISHMENT)." AND fk_statut = ".((int) $order::STATUS_DRAFT);
+				$sql .= " AND entity IN (".getEntity('commande_fournisseur').")";
+				$sql .= " ORDER BY date_creation DESC";
+				$resql = $db->query($sql);
+				if ($resql && $db->num_rows($resql) > 0) {
+					$obj = $db->fetch_object($resql);
 
-				foreach ($supplier['lines'] as $line) {
-					if (empty($line->remise_percent)) {
-						$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+					$order->fetch($obj->rowid);
+					$order->fetch_thirdparty();
+
+					foreach ($procurement['lines'] as $line) {
+						if (empty($line->remise_percent)) {
+							$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+						}
+						$result = $order->addline(
+							$line->desc,
+							$line->subprice,
+							$line->qty,
+							$line->tva_tx,
+							$line->localtax1_tx,
+							$line->localtax2_tx,
+							$line->fk_product,
+							0,
+							$line->ref_fourn,
+							$line->remise_percent,
+							'HT',
+							0,
+							$line->type,
+							0,
+							false,
+							null,
+							null,
+							0,
+							$line->fk_unit
+						);
 					}
-					$result = $order->addline(
-						$line->desc,
-						$line->subprice,
-						$line->qty,
-						$line->tva_tx,
-						$line->localtax1_tx,
-						$line->localtax2_tx,
-						$line->fk_product,
-						0,
-						$line->ref_fourn,
-						$line->remise_percent,
-						'HT',
-						0,
-						$line->type,
-						0,
-						false,
-						null,
-						null,
-						0,
-						$line->fk_unit
-					);
-				}
-				if ($result < 0) {
-					$fail++;
-					$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
-					$msg .= $order->error;
-					setEventMessages($msg, null, 'errors');
+					if ($result < 0) {
+						$fail++;
+						$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
+						$msg .= $order->error;
+						setEventMessages($msg, null, 'errors');
+					} else {
+						$id = $result;
+					}
 				} else {
-					$id = $result;
-				}
-			} else {
-				$order->socid = $suppliersid[$i];
-				$order->fetch_thirdparty();
+					$order->socid = $suppliersid[$i];
+					$order->fetch_thirdparty();
 
-				// Trick to know which orders have been generated using the replenishment feature
-				$order->source = $order::SOURCE_ID_REPLENISHMENT;
+					// Trick to know which orders have been generated using the replenishment feature
+					$order->source = $order::SOURCE_ID_REPLENISHMENT;
 
-				foreach ($supplier['lines'] as $line) {
-					if (empty($line->remise_percent)) {
-						$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+					foreach ($procurement['lines'] as $line) {
+						if (empty($line->remise_percent)) {
+							$line->remise_percent = $order->thirdparty->remise_supplier_percent;
+						}
+						$order->lines[] = $line;
 					}
-					$order->lines[] = $line;
-				}
-				$order->cond_reglement_id = $order->thirdparty->cond_reglement_supplier_id;
-				$order->mode_reglement_id = $order->thirdparty->mode_reglement_supplier_id;
+					$order->cond_reglement_id = $order->thirdparty->cond_reglement_supplier_id;
+					$order->mode_reglement_id = $order->thirdparty->mode_reglement_supplier_id;
 
-				$id = $order->create($user);
+					$id = $order->create($user);
+					if ($id < 0) {
+						$fail++;
+						$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
+						$msg .= $order->error;
+						setEventMessages($msg, null, 'errors');
+					}
+					$i++;
+				}
+			}
+		}
+
+		//Create MO from $procurements with 'mo'
+		if ($procurements['mo']) {
+			foreach ($procurements['mo'] as $procurement) {
+				$mo = Mo::castObjectToMo($procurement);
+				$id = $mo->create($user);
 				if ($id < 0) {
 					$fail++;
-					$msg = $langs->trans('OrderFail')."&nbsp;:&nbsp;";
-					$msg .= $order->error;
+					$msg = $langs->trans('MoFail')."&nbsp;:&nbsp;";
+					$msg .= $mo->error;
 					setEventMessages($msg, null, 'errors');
 				}
-				$i++;
+			}
+		}
+
+		//Create MO from $procurements with 'moWithBom'
+		if ($procurements['moWithBom']) {
+			foreach ($procurements['moWithBom'] as $procurement) {
+				$mo = Mo::castObjectToMo($procurement);
+				$id = $mo->create($user);
+				if ($id < 0) {
+					$fail++;
+					$msg = $langs->trans('MoWithBomFail')."&nbsp;:&nbsp;";
+					$msg .= $mo->error;
+					setEventMessages($msg, null, 'errors');
+				}
 			}
 		}
 
@@ -569,6 +635,12 @@ $head[1][0] = DOL_URL_ROOT.'/product/stock/replenishorders.php';
 $head[1][1] = $langs->trans("ReplenishmentOrders");
 $head[1][2] = 'replenishorders';
 
+if (!empty($conf->mrp->enabled)) {
+	$head[2][0] = DOL_URL_ROOT.'/product/stock/replenisMo.php';
+	$head[2][1] = $langs->trans("ReplenishmentMo");
+	$head[2][2] = 'replenishorders';
+}
+
 
 print load_fiche_titre($langs->trans('Replenishment'), '', 'stock');
 
@@ -613,6 +685,18 @@ if (!empty($conf->global->STOCK_ALLOW_ADD_LIMIT_STOCK_BY_WAREHOUSE)) {
 	print $langs->trans('Warehouse').' '.$formproduct->selectWarehouses($fk_entrepot, 'fk_entrepot', '', 1);
 	print '</div>';
 }
+
+// Add filter for 'finished' and 'finished with default BOM'
+if(!empty($conf->mrp->enabled))
+{
+	print '<div class="inline-block valignmiddle" style="padding-right: 20px;">';
+	print '<tr><td class="fieldrequired">'.$langs->trans("NatureOfProductShort").'</td><td colspan="3">';
+	$finishedarray = array('0' => "", '1' => $langs->trans("NatureOfProductFinished"), '2' => $langs->trans("NatureOfProductFinishedWithDefaultBOM"));
+	print $form->selectarray('filterFinished', $finishedarray, GETPOST('filterFinished'));
+	print '</td></tr>';
+	print '</div>';
+}
+
 print '<div class="inline-block valignmiddle" style="padding-right: 20px;">';
 print $langs->trans('Supplier').' '.$form->select_company($fk_supplier, 'fk_supplier', 'fournisseur=1', 1);
 print '</div>';
@@ -753,6 +837,14 @@ if (!empty($conf->global->STOCK_REPLENISH_ADD_CHECKBOX_INCLUDE_DRAFT_ORDER)) {
 	print $langs->trans('IncludeAlsoDraftOrders').'&nbsp;<input type="checkbox" id="draftorder" name="draftorder" '.(!empty($draftchecked) ? $draftchecked : '').'>';
 }
 print '</td>';
+if (!empty($conf->mrp->enabled)) {
+	print '<td class="liste_titre right">';
+	if (!empty($conf->global->STOCK_REPLENISH_ADD_CHECKBOX_INCLUDE_DRAFT_MO)) {
+		print $langs->trans('IncludeAlsoDraftMo').'&nbsp;<input type="checkbox" id="draftMo" name="draftMo" '.(!empty($mochecked) ? $mochecked : '').'>';
+	}
+	print '</td>';
+}
+
 print '<td class="liste_titre">&nbsp;</td>';
 // Fields from hook
 $parameters = array('param'=>$param, 'sortfield'=>$sortfield, 'sortorder'=>$sortorder);
@@ -780,6 +872,9 @@ if (!empty($conf->global->STOCK_ALLOW_ADD_LIMIT_STOCK_BY_WAREHOUSE) && $fk_entre
 	print_liste_field_titre($stocklabelbis, $_SERVER["PHP_SELF"], 'stock_real_warehouse', $param, '', '', $sortfield, $sortorder, 'right ');
 }
 print_liste_field_titre('Ordered', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
+if (!empty($conf->mrp->enabled)) {
+	print_liste_field_titre('InProduction', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
+}
 print_liste_field_titre('StockToBuy', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
 print_liste_field_titre('SupplierRef', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
 
@@ -801,6 +896,11 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 		}
 
 		$prod->load_stock('warehouseopen, warehouseinternal'.(!$usevirtualstock?', novirtual':''), $draftchecked);
+
+		if (!empty($conf->mrp->enabled)) {
+			$prod->load_stats_mo();
+			$inProduction = $prod->stats_mrptoproduce['qty'];
+		}
 
 		// Multilangs
 		if (getDolGlobalInt('MAIN_MULTILANGS')) {
@@ -875,7 +975,8 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 			$stocktobuywarehouse = max(max($desiredstockwarehouse, $alertstockwarehouse) - $stockwarehouse, 0); //ordered is already in $stock in virtual mode
 		}
 
-		$picto = '';
+		//Comment for suppliers orders
+		$pictoOrders = '';
 		if ($ordered > 0) {
 			$stockforcompare = ($usevirtualstock ? $stock : $stock + $ordered);
 			/*if ($stockforcompare >= $desiredstock)
@@ -885,7 +986,16 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 				$picto = img_picto('', 'help');
 			}*/
 		} else {
-			$picto = img_picto($langs->trans("NoPendingReceptionOnSupplierOrder"), 'help');
+			$pictoOrders = img_picto($langs->trans("NoPendingReceptionOnSupplierOrder"), 'help');
+		}
+
+		//Comment for MO
+		$pictoMo = '';
+		if ($inProduction > 0) {
+			//TODO find out...
+			// $stockforcompare = ($usevirtualstock ? $stock : $stock + $ordered);
+		} else {
+			$pictoMo = img_picto($langs->trans("NoPendingReceptionOnMo"), 'help');
 		}
 
 		print '<tr class="oddeven">';
@@ -931,12 +1041,17 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 		}
 
 		// Already ordered
-		print '<td class="right"><a href="replenishorders.php?search_product='.$prod->id.'">'.$ordered.'</a> '.$picto.'</td>';
+		print '<td class="right"><a href="replenishorders.php?search_product='.$prod->id.'">'.$ordered.'</a> '.$pictoOrders.'</td>';
+
+		// Already in production
+		if (!empty($conf->mrp->enabled)) {
+			print '<td class="right"><a href="replenishmo.php?search_product=' . $prod->id . '">' . $inProduction . '</a> ' . $pictoMo . '</td>';
+		}
 
 		// To order
 		print '<td class="right"><input type="text" size="4" name="tobuy'.$i.'" value="'.((!empty($conf->global->STOCK_ALLOW_ADD_LIMIT_STOCK_BY_WAREHOUSE) && $fk_entrepot > 0) > 0 ? $stocktobuywarehouse : $stocktobuy).'"></td>';
 
-		// Supplier
+		// Selection to consume the Product (via Supplier, Mo or MoWithBom)
 		print '<td class="right">';
 		print $form->select_product_fourn_price($prod->id, 'fourn'.$i, $fk_supplier);
 		print '</td>';
