@@ -1261,8 +1261,9 @@ class SupplierProposal extends CommonObject
 				$this->statut_libelle       = $obj->statut_label;
 				$this->datec                = $this->db->jdate($obj->datec); // TODO deprecated
 				$this->datev                = $this->db->jdate($obj->datev); // TODO deprecated
-				$this->date_creation = $this->db->jdate($obj->datec); //Creation date
-				$this->date_validation = $this->db->jdate($obj->datev); //Validation date
+				$this->date_creation = $this->db->jdate($obj->datec);	// Creation date
+				$this->date                 = $this->date_creation;
+				$this->date_validation = $this->db->jdate($obj->datev); // Validation date
 				$this->date_livraison       = $this->db->jdate($obj->delivery_date); // deprecated
 				$this->delivery_date        = $this->db->jdate($obj->delivery_date);
 				$this->shipping_method_id   = ($obj->fk_shipping_method > 0) ? $obj->fk_shipping_method : null;
@@ -1721,7 +1722,7 @@ class SupplierProposal extends CommonObject
 			if (empty($conf->global->MAIN_DISABLE_PDF_AUTOUPDATE)) {
 				// Define output language
 				$outputlangs = $langs;
-				if (!empty($conf->global->MAIN_MULTILANGS)) {
+				if (getDolGlobalInt('MAIN_MULTILANGS')) {
 					$outputlangs = new Translate("", $conf);
 					$newlang = (GETPOST('lang_id', 'aZ09') ? GETPOST('lang_id', 'aZ09') : $this->thirdparty->default_lang);
 					$outputlangs->setDefaultLang($newlang);

@@ -112,7 +112,7 @@ if (!empty($conf->global->STOCK_CALCULATE_ON_SHIPMENT)
 	|| !empty($conf->global->STOCK_CALCULATE_ON_SHIPMENT_CLOSE)
 	|| !empty($conf->global->STOCK_CALCULATE_ON_RECEPTION)
 	|| !empty($conf->global->STOCK_CALCULATE_ON_RECEPTION_CLOSE)
-	|| !empty($conf->mrp->enabled)) {
+	|| isModEnabled('mrp')) {
 	$virtualdiffersfromphysical = 1; // According to increase/decrease stock options, virtual and physical stock may differs.
 }
 
@@ -183,29 +183,29 @@ if ($action == 'order' && GETPOST('valid')) {
 					$supplierpriceid = $obtaining['Id'];
 					//get all the parameters needed to create a line
 					$idprod = $productsupplier->get_buyprice($supplierpriceid, $qty);
-					$res = $productsupplier->fetch($idprod);
-					if ($res && $idprod > 0) {
-						if ($qty) {
-							//might need some value checks
-							$line = new CommandeFournisseurLigne($db);
-							$line->qty = $qty;
-							$line->fk_product = $idprod;
+          $res = $productsupplier->fetch($idprod);
+          if ($res && $idprod > 0) {
+            if ($qty) {
+              //might need some value checks
+              $line = new CommandeFournisseurLigne($db);
+              $line->qty = $qty;
+              $line->fk_product = $idprod;
 
-							//$product = new Product($db);
-							//$product->fetch($obj->fk_product);
-							if (!empty($conf->global->MAIN_MULTILANGS)) {
-								$productsupplier->getMultiLangs();
-							}
+              //$product = new Product($db);
+              //$product->fetch($obj->fk_product);
+              if (getDolGlobalInt('MAIN_MULTILANGS')) {
+                $productsupplier->getMultiLangs();
+              }
 
-							// if we use supplier description of the products
-							if (!empty($productsupplier->desc_supplier) && !empty($conf->global->PRODUIT_FOURN_TEXTS)) {
-								$desc = $productsupplier->desc_supplier;
-							} else {
-								$desc = $productsupplier->description;
-							}
-							$line->desc = $desc;
-							if (!empty($conf->global->MAIN_MULTILANGS)) {
-								// TODO Get desc in language of thirdparty
+              // if we use supplier description of the products
+              if (!empty($productsupplier->desc_supplier) && !empty($conf->global->PRODUIT_FOURN_TEXTS)) {
+                $desc = $productsupplier->desc_supplier;
+              } else {
+                $desc = $productsupplier->description;
+              }
+              $line->desc = $desc;
+              if (getDolGlobalInt('MAIN_MULTILANGS')) {
+                // TODO Get desc in language of thirdparty
 							}
 
 							$line->tva_tx = $productsupplier->vatrate_supplier;
@@ -219,6 +219,7 @@ if ($action == 'order' && GETPOST('valid')) {
 							$line->type = $productsupplier->type;
 							$line->fk_unit = $productsupplier->fk_unit;
 							$procurements[$obtaining['SourcingChannel']][$productsupplier->fourn_socid]['lines'][] = $line;
+
 						}
 					} elseif ($idprod == -1) {
 						$errorQty++;
@@ -524,7 +525,7 @@ if ($usevirtualstock) {
 		$sqlReceptionFourn = '0';
 	}
 
-	if (!empty($conf->mrp->enabled)) {
+	if (isModEnabled('mrp')) {
 		$sqlProductionToConsume = "(SELECT GREATEST(0, ".$db->ifsql("SUM(".$db->ifsql("mp5.role = 'toconsume'", 'mp5.qty', '- mp5.qty').") IS NULL", "0", "SUM(".$db->ifsql("mp5.role = 'toconsume'", 'mp5.qty', '- mp5.qty').")").") as qty"; // We need the ifsql because if result is 0 for product p.rowid, we must return 0 and not NULL
 		$sqlProductionToConsume .= " FROM ".MAIN_DB_PREFIX."mrp_mo as mm5,";
 		$sqlProductionToConsume .= " ".MAIN_DB_PREFIX."mrp_production as mp5";
@@ -902,7 +903,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 		}
 
 		// Multilangs
-		if (!empty($conf->global->MAIN_MULTILANGS)) {
+		if (getDolGlobalInt('MAIN_MULTILANGS')) {
 			$sql = 'SELECT label,description';
 			$sql .= ' FROM '.MAIN_DB_PREFIX.'product_lang';
 			$sql .= ' WHERE fk_product = '.((int) $objp->rowid);
@@ -948,8 +949,8 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 
 		$desiredstock = $objp->desiredstock;
 		$alertstock = $objp->seuil_stock_alerte;
-		$desiredstockwarehouse = ($objp->desiredstockpse ? $objp->desiredstockpse : 0);
-		$alertstockwarehouse = ($objp->seuil_stock_alertepse ? $objp->seuil_stock_alertepse : 0);
+		$desiredstockwarehouse = (!empty($objp->desiredstockpse) ? $objp->desiredstockpse : 0);
+		$alertstockwarehouse = (!empty($objp->seuil_stock_alertepse) ? $objp->seuil_stock_alertepse : 0);
 
 		$warning = '';
 		if ($alertstock && ($stock < $alertstock)) {
