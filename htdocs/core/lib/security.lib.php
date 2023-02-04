@@ -344,7 +344,9 @@ function restrictedArea(User $user, $features, $object = 0, $tableandshare = '',
 	} else {
 		$objectid = $object;		// $objectid can be X or 'X,Y,Z'
 	}
-	$objectid = preg_replace('/[^0-9\.\,]/', '', $objectid);	// For the case value is coming from a non sanitized user input
+	if ($objectid) {
+		$objectid = preg_replace('/[^0-9\.\,]/', '', $objectid);	// For the case value is coming from a non sanitized user input
+	}
 
 	//dol_syslog("functions.lib:restrictedArea $feature, $objectid, $dbtablename, $feature2, $dbt_socfield, $dbt_select, $isdraft");
 	//print "user_id=".$user->id.", features=".$features.", feature2=".$feature2.", objectid=".$objectid;
@@ -633,7 +635,13 @@ function restrictedArea(User $user, $features, $object = 0, $tableandshare = '',
 	$nbko = 0;
 	if ((GETPOST("action", "aZ09") == 'confirm_delete' && GETPOST("confirm", "aZ09") == 'yes') || GETPOST("action", "aZ09") == 'delete') {
 		foreach ($featuresarray as $feature) {
-			if ($feature == 'contact') {
+			if ($feature == 'bookmark') {
+				if (!$user->rights->bookmark->supprimer) {
+					if ($user->id != $object->fk_user || empty($user->rights->bookmark->creer)) {
+						$deleteok = 0;
+					}
+				}
+			} elseif ($feature == 'contact') {
 				if (!$user->rights->societe->contact->supprimer) {
 					$deleteok = 0;
 				}
