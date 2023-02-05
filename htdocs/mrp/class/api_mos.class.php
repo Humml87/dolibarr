@@ -321,29 +321,11 @@ class Mos extends DolibarrApi
 			throw new RestException(401, 'Error bad status of MO');
 		}
 
-		$labelmovement = '';
-		$codemovement = '';
-		$autoclose = 1;
-		$arraytoconsume = array();
-		$arraytoproduce = array();
-
-		foreach ($request_data as $field => $value) {
-			if ($field == 'inventorylabel') {
-				$labelmovement = $value;
-			}
-			if ($field == 'inventorycode') {
-				$codemovement = $value;
-			}
-			if ($field == 'autoclose') {
-				$autoclose = $value;
-			}
-			if ($field == 'arraytoconsume') {
-				$arraytoconsume = $value;
-			}
-			if ($field == 'arraytoproduce') {
-				$arraytoproduce = $value;
-			}
-		}
+		$labelmovement = $request_data["inventorylabel"] != null ? $request_data["inventorylabel"] : '';
+		$codemovement = $request_data["inventorycode"] != null ? $request_data["inventorycode"] : '';
+		$autoclose = $request_data["autoclose"] != null ? $request_data["autoclose"] : 1;;
+		$arraytoconsume = $request_data["arraytoconsume"] != null ? $request_data["arraytoconsume"] : array();
+		$arraytoproduce = $request_data["arraytoproduce"] != null ? $request_data["arraytoproduce"] : array();
 
 		if (empty($labelmovement)) {
 			throw new RestException(500, "Field inventorylabel not prodivded");
@@ -362,282 +344,144 @@ class Mos extends DolibarrApi
 		$consumptioncomplete = true;
 		$productioncomplete = true;
 
-		if (!empty($arraytoconsume) && !empty($arraytoproduce)) {
-			$pos = 0;
-			$arrayofarrayname = array("arraytoconsume","arraytoproduce");
-			foreach ($arrayofarrayname as $arrayname) {
-				foreach ($$arrayname as $value) {
-					$tmpproduct = new Product($this->db);
-					if (empty($value["objectid"])) {
-						throw new RestException(500, "Field objectid required in ".$arrayname);
-					}
-					$tmpproduct->fetch($value["qty"]);
-					if (empty($value["qty"])) {
-						throw new RestException(500, "Field qty required in ".$arrayname);
-					}
-					if ($value["qty"]!=0) {
-						$qtytoprocess = $value["qty"];
-						if (isset($value["fk_warehouse"])) {	// If there is a warehouse to set
-							if (!($value["fk_warehouse"] > 0)) {	// If there is no warehouse set.
-								$error++;
-								throw new RestException(500, "Field fk_warehouse must be > 0 in ".$arrayname);
-							}
-							if ($tmpproduct->status_batch) {
-								$error++;
-								throw new RestException(500, "Product ".$tmpproduct->ref."must be in batch");
-							}
-						}
-						$idstockmove = 0;
-						if (!$error && $value["fk_warehouse"] > 0) {
-							// Record stock movement
-							$id_product_batch = 0;
-
-							$stockmove->setOrigin($this->mo->element, $this->mo->id);
-
-							if ($qtytoprocess >= 0) {
-								$moline = new MoLine($this->db);
-								$moline->fk_mo = $this->mo->id;
-								$moline->position = $pos;
-								$moline->fk_product = $value["objectid"];
-								$moline->fk_warehouse = $value["fk_warehouse"];
-								$moline->qty = $qtytoprocess;
-								$moline->batch = $tmpproduct->status_batch;
-								$moline->role = 'toproduce';
-								$moline->fk_mrp_production = "";
-								$moline->fk_stock_movement = $idstockmove;
-								$moline->fk_user_creat = DolibarrApiAccess::$user->id;
-
-								$resultmoline = $moline->create(DolibarrApiAccess::$user);
-								if ($resultmoline <= 0) {
-									$error++;
-									throw new RestException(500, $moline->error);
-								}
-								$idstockmove = $stockmove->livraison(DolibarrApiAccess::$user, $value["objectid"], $value["fk_warehouse"], $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
-							} else {
-								$moline = new MoLine($this->db);
-								$moline->fk_mo = $this->mo->id;
-								$moline->position = $pos;
-								$moline->fk_product = $value["objectid"];
-								$moline->fk_warehouse = $value["fk_warehouse"];
-								$moline->qty = $qtytoprocess;
-								$moline->batch = $tmpproduct->status_batch;
-								$moline->role = 'toconsume';
-								$moline->fk_mrp_production = "";
-								$moline->fk_stock_movement = $idstockmove;
-								$moline->fk_user_creat = DolibarrApiAccess::$user->id;
-
-								$resultmoline = $moline->create(DolibarrApiAccess::$user);
-								if ($resultmoline <= 0) {
-									$error++;
-									throw new RestException(500, $moline->error);
-								}
-								$idstockmove = $stockmove->reception(DolibarrApiAccess::$user, $value["objectid"], $value["fk_warehouse"], $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
-							}
-							if ($idstockmove < 0) {
-								$error++;
-								throw new RestException(500, $stockmove->error);
-							}
-						}
-						if (!$error) {
-							// Record consumption
-							$moline = new MoLine($this->db);
-							$moline->fk_mo = $this->mo->id;
-							$moline->position = $pos;
-							$moline->fk_product = $value["objectid"];
-							$moline->fk_warehouse = $value["fk_warehouse"];
-							$moline->qty = $qtytoprocess;
-							$moline->batch = $tmpproduct->status_batch;
-							if ($arrayname == "arraytoconsume") {
-								$moline->role = 'consumed';
-							} else {
-								$moline->role = 'produced';
-							}
-							$moline->fk_mrp_production = "";
-							$moline->fk_stock_movement = $idstockmove;
-							$moline->fk_user_creat = DolibarrApiAccess::$user->id;
-
-							$resultmoline = $moline->create(DolibarrApiAccess::$user);
-							if ($resultmoline <= 0) {
-								$error++;
-								throw new RestException(500, $moline->error);
-							}
-
-							$pos++;
-						}
-					}
+	 	$this->db->begin();
+		$pos = 0;
+		$arrayofarrayname = array('arraytoconsume','arraytoproduce');
+		foreach ($arrayofarrayname as $arrayname) {
+			foreach ($$arrayname as $value) {
+				if (empty($value['objectid'])) {
+					throw new RestException(500, "Field objectid required in ".$arrayname);
 				}
-			}
-			if (!$error) {
-				if ($autoclose <= 0) {
-					$consumptioncomplete = false;
-					$productioncomplete = false;
+				$objectid = $value['objectid'];
+
+				if (empty($value['qty'])) {
+					throw new RestException(500, "Field qty required in ".$arrayname);
 				}
-			}
-		} else {
-			$pos = 0;
-			foreach ($this->mo->lines as $line) {
-				if ($line->role == 'toconsume') {
-					$tmpproduct = new Product($this->db);
-					$tmpproduct->fetch($line->fk_product);
-					if ($line->qty != 0) {
-						$qtytoprocess = $line->qty;
-						if (isset($line->fk_warehouse)) {	// If there is a warehouse to set
-							if (!($line->fk_warehouse > 0)) {	// If there is no warehouse set.
-								$langs->load("errors");
-								$error++;
-								throw new RestException(500, $langs->trans("ErrorFieldRequiredForProduct", $langs->transnoentitiesnoconv("Warehouse"), $tmpproduct->ref));
-							}
-							if ($tmpproduct->status_batch) {
-								$langs->load("errors");
-								$error++;
-								throw new RestException(500, $langs->trans("ErrorFieldRequiredForProduct", $langs->transnoentitiesnoconv("Batch"), $tmpproduct->ref));
-							}
-						}
-						$idstockmove = 0;
-						if (!$error && $line->fk_warehouse > 0) {
-							// Record stock movement
-							$id_product_batch = 0;
-							$stockmove->origin_type = 'mo';
-							$stockmove->origin_id = $this->mo->id;
-							if ($qtytoprocess >= 0) {
-								$idstockmove = $stockmove->livraison(DolibarrApiAccess::$user, $line->fk_product, $line->fk_warehouse, $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
-							} else {
-								$idstockmove = $stockmove->reception(DolibarrApiAccess::$user, $line->fk_product, $line->fk_warehouse, $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
-							}
-							if ($idstockmove < 0) {
-								$error++;
-								throw new RestException(500, $stockmove->error);
-							}
-						}
-						if (!$error) {
-							// Record consumption
-							$moline = new MoLine($this->db);
-							$moline->fk_mo = $this->mo->id;
-							$moline->position = $pos;
-							$moline->fk_product = $line->fk_product;
-							$moline->fk_warehouse = $line->fk_warehouse;
-							$moline->qty = $qtytoprocess;
-							$moline->batch = $tmpproduct->status_batch;
-							$moline->role = 'consumed';
-							$moline->fk_mrp_production = $line->id;
-							$moline->fk_stock_movement = $idstockmove;
-							$moline->fk_user_creat = DolibarrApiAccess::$user->id;
+				$qty = $value['qty'];
 
-							$resultmoline = $moline->create(DolibarrApiAccess::$user);
-							if ($resultmoline <= 0) {
-								$error++;
-								throw new RestException(500, $moline->error);
-							}
+				if (empty($value['fk_warehouse'])) {
+					throw new RestException(500, "Field fk_warehouse required in ".$arrayname);
+				}
+				$fk_warehouse = $value['fk_warehouse'];
 
-							$pos++;
+				$tmpmoline = current(array_filter($this->mo->lines, function ($e) use ($objectid) { return $e->id == $objectid; }));
+
+				$tmpproduct = new Product($this->db);
+				$tmpproduct->fetch($tmpmoline->fk_product);
+
+				if ($qty!=0) {
+					$qtytoprocess = $qty;
+					if (!($value['fk_warehouse'] > 0)) {	// If there is no warehouse set.
+						$error++;
+						throw new RestException(500, "Field fk_warehouse must be > 0 in ".$arrayname);
+					}
+					if ($tmpproduct->status_batch) {
+						$error++;
+						throw new RestException(500, "Product ".$tmpproduct->ref."must be in batch");
+					}
+
+					// Record stock movement
+					$id_product_batch = 0;
+					$stockmove->setOrigin($this->mo->element, $this->mo->id);
+					$idstockmove = 0;
+					if (!$tmpmoline->disable_stock_change) {
+						if ($qtytoprocess >= 0) {
+							//TODO integrate pricetoprocess
+							$idstockmove = $stockmove->livraison(DolibarrApiAccess::$user, $tmpproduct->id, $fk_warehouse, $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
+						} else {
+							$idstockmove = $stockmove->reception(DolibarrApiAccess::$user, $tmpproduct->id, $fk_warehouse, $qtytoprocess * -1, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
+						}
+						if ($idstockmove <= 0) {
+							$error++;
+							throw new RestException(500, "Can't create stockmovement for ".$tmpproduct->ref);
 						}
 					}
-				}
-			}
-			$pos = 0;
-			foreach ($this->mo->lines as $line) {
-				if ($line->role == 'toproduce') {
-					$tmpproduct = new Product($this->db);
-					$tmpproduct->fetch($line->fk_product);
-					if ($line->qty != 0) {
-						$qtytoprocess = $line->qty;
-						if (isset($line->fk_warehouse)) {	// If there is a warehouse to set
-							if (!($line->fk_warehouse > 0)) {	// If there is no warehouse set.
-								$langs->load("errors");
-								$error++;
-								throw new RestException(500, $langs->trans("ErrorFieldRequiredForProduct", $langs->transnoentitiesnoconv("Warehouse"), $tmpproduct->ref));
-							}
-							if ($tmpproduct->status_batch) {
-								$langs->load("errors");
-								$error++;
-								throw new RestException(500, $langs->trans("ErrorFieldRequiredForProduct", $langs->transnoentitiesnoconv("Batch"), $tmpproduct->ref));
-							}
-						}
-						$idstockmove = 0;
-						if (!$error && $line->fk_warehouse > 0) {
-							// Record stock movement
-							$id_product_batch = 0;
-							$stockmove->origin_type = 'mo';
-							$stockmove->origin_id = $this->mo->id;
-							if ($qtytoprocess >= 0) {
-								$idstockmove = $stockmove->livraison(DolibarrApiAccess::$user, $line->fk_product, $line->fk_warehouse, $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
-							} else {
-								$idstockmove = $stockmove->reception(DolibarrApiAccess::$user, $line->fk_product, $line->fk_warehouse, $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
-							}
-							if ($idstockmove < 0) {
-								$error++;
-								throw new RestException(500, $stockmove->error);
-							}
-						}
-						if (!$error) {
-							// Record consumption
-							$moline = new MoLine($this->db);
-							$moline->fk_mo = $this->mo->id;
-							$moline->position = $pos;
-							$moline->fk_product = $line->fk_product;
-							$moline->fk_warehouse = $line->fk_warehouse;
-							$moline->qty = $qtytoprocess;
-							$moline->batch = $tmpproduct->status_batch;
-							$moline->role = 'produced';
-							$moline->fk_mrp_production = $line->id;
-							$moline->fk_stock_movement = $idstockmove;
-							$moline->fk_user_creat = DolibarrApiAccess::$user->id;
 
-							$resultmoline = $moline->create(DolibarrApiAccess::$user);
-							if ($resultmoline <= 0) {
-								$error++;
-								throw new RestException(500, $moline->error);
-							}
-
-							$pos++;
-						}
+					$moline = new MoLine($this->db);
+					$moline->fk_mo = $this->mo->id;
+					$moline->fk_mrp_production = $tmpmoline->id;
+					$moline->position = $pos;
+					$moline->fk_product = $tmpproduct->id;
+					$moline->fk_warehouse = $fk_warehouse;
+					$moline->qty = $qtytoprocess;
+					if ($tmpproduct->status_batch > 0) {
+						//TODO batch integration
+						$moline->batch = $tmpproduct->status_batch;
 					}
-				}
-			}
-
-			if (!$error) {
-				if ($autoclose > 0) {
-					foreach ($this->mo->lines as $line) {
-						if ($line->role == 'toconsume') {
-							$arrayoflines = $this->mo->fetchLinesLinked('consumed', $line->id);
-							$alreadyconsumed = 0;
-							foreach ($arrayoflines as $line2) {
-								$alreadyconsumed += $line2['qty'];
-							}
-
-							if ($alreadyconsumed < $line->qty) {
-								$consumptioncomplete = false;
-							}
-						}
-						if ($line->role == 'toproduce') {
-							$arrayoflines = $this->mo->fetchLinesLinked('produced', $line->id);
-							$alreadyproduced = 0;
-							foreach ($arrayoflines as $line2) {
-								$alreadyproduced += $line2['qty'];
-							}
-
-							if ($alreadyproduced < $line->qty) {
-								$productioncomplete = false;
-							}
-						}
+					if ($arrayname == 'arraytoconsume') {
+						$moline->role = 'consumed';
+					} else {
+						$moline->role = 'produced';
 					}
-				} else {
-					$consumptioncomplete = false;
-					$productioncomplete = false;
+					$moline->fk_stock_movement = $idstockmove <= 0 ? null : $idstockmove;
+					$moline->fk_user_creat = DolibarrApiAccess::$user->id;
+
+					$resultmoline = $moline->create(DolibarrApiAccess::$user);
+					if ($resultmoline <= 0) {
+						$error++;
+						throw new RestException(500, $moline->error);
+					}
+
 				}
 			}
 		}
+		if (!$error) {
+			if ($autoclose <= 0) {
+				$consumptioncomplete = false;
+				$productioncomplete = false;
+			}
+		}
+
+		if (!$error) {
+			if ($autoclose > 0) {
+				foreach ($this->mo->lines as $line) {
+					if ($line->role == 'toconsume') {
+						$arrayoflines = $this->mo->fetchLinesLinked('consumed', $line->id);
+						$alreadyconsumed = 0;
+						foreach ($arrayoflines as $line2) {
+							$alreadyconsumed += $line2['qty'];
+						}
+
+						if ($alreadyconsumed < $line->qty) {
+							$consumptioncomplete = false;
+						}
+					}
+					if ($line->role == 'toproduce') {
+						$arrayoflines = $this->mo->fetchLinesLinked('produced', $line->id);
+						$alreadyproduced = 0;
+						foreach ($arrayoflines as $line2) {
+							$alreadyproduced += $line2['qty'];
+						}
+
+						if ($alreadyproduced < $line->qty) {
+							$productioncomplete = false;
+						}
+					}
+				}
+			} else {
+				$consumptioncomplete = false;
+				$productioncomplete = false;
+			}
+		}
+
 
 		// Update status of MO
 		dol_syslog("consumptioncomplete = ".$consumptioncomplete." productioncomplete = ".$productioncomplete);
 		//var_dump("consumptioncomplete = ".$consumptioncomplete." productioncomplete = ".$productioncomplete);
 		if ($consumptioncomplete && $productioncomplete) {
-			$result = $this->mo->setStatut(self::STATUS_PRODUCED, 0, '', 'MRP_MO_PRODUCED');
+			$result = $this->mo->setStatut(Mo::STATUS_PRODUCED, 0, '', 'MRP_MO_PRODUCED');
 		} else {
-			$result = $this->mo->setStatut(self::STATUS_INPROGRESS, 0, '', 'MRP_MO_PRODUCED');
+			$result = $this->mo->setStatut(Mo::STATUS_INPROGRESS, 0, '', 'MRP_MO_PRODUCED');
 		}
 		if ($result <= 0) {
 			throw new RestException(500, $this->mo->error);
+		}
+
+		if ($error) {
+			$this->db->rollback();
+			throw new RestException(500, "Error in function -> rollback database.");
+		} else {
+			$this->db->commit();
 		}
 
 		return $this->mo->id;
