@@ -393,7 +393,7 @@ class Mos extends DolibarrApi
 						}
 						if ($idstockmove <= 0) {
 							$error++;
-							throw new RestException(500, "Can't create stockmovement for ".$tmpproduct->ref);
+							throw new RestException(500, "Can't create stockmovement for product ".$tmpproduct->ref." in MoLine ". $tmpmoline->id);
 						}
 					}
 
