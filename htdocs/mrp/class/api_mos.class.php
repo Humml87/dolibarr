@@ -385,6 +385,7 @@ class Mos extends DolibarrApi
 					$stockmove->setOrigin($this->mo->element, $this->mo->id);
 					$idstockmove = 0;
 					if (!$tmpmoline->disable_stock_change) {
+						//TODO consuming or producing
 						if ($qtytoprocess >= 0) {
 							//TODO integrate pricetoprocess
 							$idstockmove = $stockmove->livraison(DolibarrApiAccess::$user, $tmpproduct->id, $fk_warehouse, $qtytoprocess, 0, $labelmovement, dol_now(), '', '', $tmpproduct->status_batch, $id_product_batch, $codemovement);
