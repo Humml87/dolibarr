@@ -161,7 +161,7 @@ class Orders extends DolibarrApi
 	 * @throws RestException 404 Not found
 	 * @throws RestException 503 Error
 	 */
-	public function index($sortfield = "t.rowid", $sortorder = 'ASC', $limit = 100, $page = 0, $thirdparty_ids = '', $sqlfilters = '')
+	public function index($sortfield = "t.rowid", $sortorder = 'ASC', $limit = 100, $page = 0, $thirdparty_ids = '', $sqlfilters = '', $sqlfilterlines = '')
 	{
 		global $db, $conf;
 
@@ -212,7 +212,16 @@ class Orders extends DolibarrApi
 				throw new RestException(400, 'Error when validating parameter sqlfilters -> '.$errormessage);
 			}
 		}
-
+		// Add sql filters for lines
+		if ($sqlfilterlines) {
+			$errormessage = '';
+			$sql .= " AND EXISTS (SELECT tl.rowid FROM ".MAIN_DB_PREFIX."commandedet AS tl WHERE tl.fk_commande = t.rowid";
+			$sql .= forgeSQLFromUniversalSearchCriteria($sqlfilterlines, $errormessage);
+			$sql .=	")";
+			if ($errormessage) {
+				throw new RestException(400, 'Error when validating parameter sqlfilterlines -> '.$errormessage);
+			}
+		}
 		$sql .= $this->db->order($sortfield, $sortorder);
 		if ($limit) {
 			if ($page < 0) {
